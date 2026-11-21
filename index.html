@@ -88,7 +88,7 @@ function login(){
   const fr=document.createElement('a');fr.textContent='🆕 ចូលលើកដំបូង (មានកូដពី Admin)';fr.style.cssText='margin-top:6px;font-size:15px;font-weight:700;text-decoration:underline;color:#FFD400';o.appendChild(fr);
    fr.onclick=()=>{[iu,ip,bt,ad,fr].forEach(x=>x.style.display='none');er.textContent='';
     const ic=mk('tel','កូដ ៦ ខ្ទង់ ពី Admin','off');ic.inputMode='numeric';ic.maxLength=6;ic.style.textAlign='center';ic.style.letterSpacing='6px';o.insertBefore(ic,er);
-    const b2=document.createElement('button');b2.textContent='✓ បញ្ជាក់កូដ';b2.style.cssText=bt.style.cssText;o.appendChild(b2);
+    const b2=document.createElement('button');b2.textContent='✓ បញ្ជាក់កូដ';b2.style.cssText=bt.style.cssText;b2.style.display='block';o.appendChild(b2);
     const bk=document.createElement('a');bk.textContent='← ត្រឡប់ក្រោយ';bk.style.cssText='margin-top:10px;opacity:.8;font-size:14px;text-decoration:underline';o.appendChild(bk);
     bk.onclick=()=>{[ic,b2,bk].forEach(x=>x.remove());[iu,ip,bt,ad,fr].forEach(x=>x.style.display='');er.textContent=''};
     const redeem=async()=>{
@@ -108,7 +108,7 @@ function login(){
       uid=id;LS.setItem('ld_uid',id);o.remove();res();
      }catch(e){er.textContent=(e&&e.code==='offline')?'គ្មានអ៊ីនធឺណិត · សូមភ្ជាប់ ហើយសាកម្ដងទៀត':'មានបញ្ហា · សូមសាកម្ដងទៀត';b2.disabled=false}
     };
-    b2.onclick=redeem;ic.onkeydown=e=>{if(e.key==='Enter')redeem()};ic.focus()};
+    b2.onclick=redeem;ic.onkeydown=e=>{if(e.key==='Enter')redeem()};ic.enterKeyHint='go';ic.oninput=()=>{if(ic.value.replace(/\D/g,'').length===6&&!b2.disabled)redeem()};ic.focus()};
    bt.onclick=go;ip.onkeydown=e=>{if(e.key==='Enter')go()};iu.onkeydown=e=>{if(e.key==='Enter')ip.focus()};
   document.body.appendChild(o)})}
 const user={isOwner:async()=>uid===ADMIN,canEdit:async()=>uid===ADMIN,can:async()=>true,id:async()=>uid,
