@@ -119,7 +119,16 @@ window.claude={use:async n=>{
  if(n==='user'){await boot();await login();return user}}catch(e){if(e&&e.code==='offline'){alert('📴 គ្មានអ៊ីនធឺណិត៖ ត្រូវបើកកម្មវិធីម្តងដំបូងដោយមានអ៊ីនធឺណិត ដើម្បីរក្សាទុកទិន្នន័យក្នុងទូរសព្ទ');return null}LS.removeItem('ld_url');alert('ភ្ជាប់មិនបាន៖ សូមពិនិត្យ Web app URL ហើយបើកម្ដងទៀត');return null}
  return null}};
 try{if('serviceWorker' in navigator&&/^https?:/.test(location.protocol))addEventListener('load',()=>navigator.serviceWorker.register('sw.js').catch(()=>{}))}catch(e){}
-})();</script><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+})();</script><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style><script>
+/* phone reset: open  .../Ld/?reset=1  to clear this phone's login (back to "ចូលលើកដំបូង"); profile photos are kept */
+(function(){ try { if (!/[?&#]reset(=|&|$)/.test(location.search + location.hash)) return;
+  const keep = []; for (let i = 0; i < localStorage.length; i++){ const k = localStorage.key(i); if (/^profPhoto:/.test(k)) keep.push([k, localStorage.getItem(k)]); }
+  localStorage.clear(); try { sessionStorage.clear(); } catch (e) {} keep.forEach(([k, v]) => localStorage.setItem(k, v));
+  try { if (indexedDB && indexedDB.databases) indexedDB.databases().then(l => l.forEach(d => { try { indexedDB.deleteDatabase(d.name); } catch (e) {} })); } catch (e) {}
+  setTimeout(() => location.replace(location.pathname), 600);
+} catch (e) {} })();
+</script>
+</head><body>
 <!doctype html>
 <html lang="km">
 <head>
