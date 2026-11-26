@@ -39,7 +39,7 @@ async function pollIn(){const r=await api({a:'since',since});const ch=new Set();
  if(r.docs.length)saveCache();
  ch.forEach(fire);if(uid&&isOff()&&!document.getElementById('ldBlock'))blockScreen()}
 async function write(c,id,op,data){saveCache();const it={c,id,op,data:data===undefined?null:data};
- if(queue.length){queue.push(it);await saveQ();paintNet();flush().then(()=>setNet(true)).catch(()=>setNet(false));return}
+ if(queue.length){if(op==='set'){for(let i=queue.length-1;i>0;i--){if(queue[i].c===c&&queue[i].id===id&&queue[i].op==='set')queue.splice(i,1)}const k=queue.findIndex((q,i)=>i>0&&q.c===c&&q.id===id&&q.op==='set');if(k>0){queue[k]=it;await saveQ();paintNet();return}}queue.push(it);await saveQ();paintNet();flush().then(()=>setNet(true)).catch(()=>setNet(false));return}
  inflight.add(c+'/'+id);try{await api({a:'write',ops:[[c,id,op,it.data]]});setNet(true)}
  catch(e){if(e&&(e.code==='offline'||e.code==='server')){queue.push(it);await saveQ();setNet(false);return}throw e}
  finally{inflight.delete(c+'/'+id)}}
@@ -5910,7 +5910,7 @@ table.ptbl tfoot td{font-size:11px!important;padding:4px 2px!important}
   function seenMe(){
     if (!db || !myUid) return; const ref = db.doc("members/" + myUid);
     (typeof ref.get === "function" ? ref.get() : Promise.reject()).then(s => { const d = (s && s.exists && s.data()) || {}; myClaim = d.claim || myClaim; showClaim(); pinServer(String(d.pin || ""), String(d.user || ""));
-      return ref.set({...d, seenAt: Date.now()}); }).catch(() => { pinServer(null); ref.set({seenAt: Date.now(), ...(myClaim ? {claim: myClaim} : {}), ...(PIN.hash ? {pin: PIN.hash} : {})}).catch(() => {}); });
+      if (d.seenAt && Date.now() - d.seenAt < 300000) return; return ref.set({...d, seenAt: Date.now()}); }).catch(() => { pinServer(null); ref.set({seenAt: Date.now(), ...(myClaim ? {claim: myClaim} : {}), ...(PIN.hash ? {pin: PIN.hash} : {})}).catch(() => {}); });
   }
   function showClaim(){
     const sel = $("claimSel"); if (!sel) return;
