@@ -7,24 +7,32 @@ const spl=document.createElement('div');spl.style.cssText='position:fixed;inset:
 window.__ldReady=()=>{try{spl.remove()}catch(e){}};setTimeout(window.__ldReady,9000);
 const cache={},subs=[],inflight=new Set(); let since=0,ready=null,uid=LS.getItem('ld_uid')||'';
 // ---- offline support: the data is kept on this phone (IndexedDB); changes made without internet wait in a queue and are sent when the connection is back
-let queue=[],online=true,saveT=0,flushing=false;
+let queue=[],failed=[],online=true,saveT=0,flushing=false,fails=0;
 const idb=(()=>{let p;const o=()=>p||(p=new Promise((res,rej)=>{try{const r=indexedDB.open('ldcache',1);r.onupgradeneeded=()=>r.result.createObjectStore('kv');r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error)}catch(e){rej(e)}}));
  return{get:async k=>{try{const d=await o();return await new Promise((res,rej)=>{const q=d.transaction('kv').objectStore('kv').get(k);q.onsuccess=()=>res(q.result);q.onerror=()=>rej(q.error)})}catch(e){return undefined}},
   set:async(k,v)=>{try{const d=await o();await new Promise((res,rej)=>{const t=d.transaction('kv','readwrite');t.objectStore('kv').put(v,k);t.oncomplete=res;t.onerror=()=>rej(t.error)})}catch(e){}}}})();
 const saveCache=()=>{clearTimeout(saveT);saveT=setTimeout(()=>{idb.set('cache',{cache,since})},800)};
 const saveQ=()=>idb.set('queue',queue);
 const isPend=(c,id)=>inflight.has(c+'/'+id)||queue.some(q=>q.c===c&&q.id===id);
-function paintNet(){let b=document.getElementById('ldOff');const n=queue.length;if(online&&!n){if(b)b.remove();return}if(!document.body)return;
+function paintNet(){let b=document.getElementById('ldOff');const n=queue.length;if(online&&!n&&!failed.length){if(b)b.remove();return}if(!document.body)return;
  if(!b){b=document.createElement('div');b.id='ldOff';b.style.cssText='position:fixed;left:8px;right:8px;bottom:calc(8px + env(safe-area-inset-bottom,0px));z-index:99980;background:#B45309;color:#fff;font:600 13px sans-serif;padding:8px 12px;border-radius:12px;text-align:center;pointer-events:none;opacity:.95';document.body.append(b)}
- b.textContent=online?'🔄 កំពុងផ្ញើទិន្នន័យ '+n+' …':'📴 គ្មានអ៊ីនធឺណិត · ទិន្នន័យរក្សាទុកក្នុងទូរសព្ទ'+(n?' ('+n+' រង់ចាំផ្ញើ)':'')}
+ b.textContent=failed.length&&online?'⚠️ ផ្ញើមិនបាន '+failed.length+' ('+failed[0].c+'/'+failed[0].id+' '+failed[0].kb+'KB)'+(n?' · រង់ចាំ '+n:''):online?'🔄 កំពុងផ្ញើទិន្នន័យ '+n+' …':(navigator.onLine===false?'📴 គ្មានអ៊ីនធឺណិត · ទិន្នន័យរក្សាទុកក្នុងទូរសព្ទ':'⚠️ មានអ៊ីនធឺណិត ប៉ុន្តែភ្ជាប់ server មិនបាន · ទិន្នន័យរក្សាទុកក្នុងទូរសព្ទ · នឹងព្យាយាមម្តងទៀត')+(n?' ('+n+' រង់ចាំផ្ញើ)':'')}
 function setNet(v){if(online!==v){online=v}paintNet()}
 async function flush(){if(flushing||!queue.length)return;flushing=true;
- try{while(queue.length){const q=queue[0];try{await api({a:'write',ops:[[q.c,q.id,q.op,q.data===undefined?null:q.data]]})}catch(e){if(e&&e.code==='offline')throw e;/* server refused this change: drop it so the queue does not get stuck */}queue.shift();await saveQ();paintNet()}}
+ try{while(queue.length){const q=queue[0];try{await api({a:'write',ops:[[q.c,q.id,q.op,q.data===undefined?null:q.data]]})}
+  catch(e){if(e&&e.code!=='offline'&&e.code!=='server'){/* server refused this change: drop it so the queue does not get stuck */}
+   else{ /* a fetch error: is the whole server unreachable, or only THIS change? */
+    let reach=false;try{await api({a:'since',since});reach=true}catch(e2){}
+    if(!reach)throw e;
+    q.tries=(q.tries||0)+1;if(q.tries<3){await saveQ();throw e}
+    /* this one change keeps failing while the server answers: set it aside so the others can be sent */
+    failed.push({c:q.c,id:q.id,op:q.op,kb:Math.round(JSON.stringify(q.data||'').length/1024),data:q.data});await idb.set('queueFailed',failed)}}
+  queue.shift();await saveQ();paintNet()}}
  finally{flushing=false}}
 const clone=o=>JSON.parse(JSON.stringify(o));
-async function api(b){let r;try{r=await fetch(U,{method:'POST',redirect:'follow',body:JSON.stringify(Object.assign({t:TOKEN},b))})}catch(e){throw{code:'offline',message:'offline'}}const j=await r.json();if(j.error)throw{code:'unavailable',message:j.error};return j}
+async function api(b){let r;try{r=await fetch(U,{method:'POST',redirect:'follow',body:JSON.stringify(Object.assign({t:TOKEN},b))})}catch(e){throw{code:'offline',message:'offline'}}let j;try{j=await r.json()}catch(e){throw{code:'server',message:'bad reply'}}if(j.error)throw{code:'unavailable',message:j.error};return j}
 function fire(c){subs.forEach(s=>{if(s.c===c)s.fire()})}
-async function poll(){try{await flush();await pollIn();setNet(true)}catch(e){if(e&&e.code==='offline')setNet(false);throw e}}
+async function poll(){let fe;try{await flush()}catch(e){fe=e}try{await pollIn();setNet(true)}catch(e){if(e&&(e.code==='offline'||e.code==='server'))setNet(false);throw e}if(fe&&fe.code!=='offline'&&fe.code!=='server')throw fe}
 async function pollIn(){const r=await api({a:'since',since});const ch=new Set();
  for(const [c,id,js,ts] of r.docs){if(ts>since)since=ts;if(isPend(c,id))continue;(cache[c]=cache[c]||{});if(js==null)delete cache[c][id];else cache[c][id]=JSON.parse(js);ch.add(c)}
 
@@ -33,7 +41,7 @@ async function pollIn(){const r=await api({a:'since',since});const ch=new Set();
 async function write(c,id,op,data){saveCache();const it={c,id,op,data:data===undefined?null:data};
  if(queue.length){queue.push(it);await saveQ();paintNet();flush().then(()=>setNet(true)).catch(()=>setNet(false));return}
  inflight.add(c+'/'+id);try{await api({a:'write',ops:[[c,id,op,it.data]]});setNet(true)}
- catch(e){if(e&&e.code==='offline'){queue.push(it);await saveQ();setNet(false);return}throw e}
+ catch(e){if(e&&(e.code==='offline'||e.code==='server')){queue.push(it);await saveQ();setNet(false);return}throw e}
  finally{inflight.delete(c+'/'+id)}}
 function snap(c,f){let a=Object.entries(cache[c]||{}).filter(([id,v])=>(f.w||[]).every(([k,op,x])=>{const y=v[k];return op=='=='?y===x:op=='!='?y!==x:op=='<'?y<x:op=='<='?y<=x:op=='>'?y>x:y>=x}));
  if(f.ob){const d=f.dir=='desc'?-1:1;a.sort((p,q)=>(p[1][f.ob]>q[1][f.ob]?1:p[1][f.ob]<q[1][f.ob]?-1:0)*d)}
@@ -53,11 +61,11 @@ function D(c,id){return{id,
 const db={collection:c=>Object.assign(Q(c,{}),{doc:id=>D(c,id),add:async d=>{const id='c'+Date.now().toString(36)+Math.random().toString(36).slice(2,6);await D(c,id).set(d);return D(c,id)}}),
  doc:p=>{const i=p.indexOf('/');return D(p.slice(0,i),p.slice(i+1))}};
 function boot(){return ready||(ready=(async()=>{
- try{const sv=await idb.get('cache');if(sv&&sv.cache){for(const k in sv.cache)cache[k]=sv.cache[k];since=sv.since||0}const q=await idb.get('queue');if(Array.isArray(q))queue=q}catch(e){}
+ try{const sv=await idb.get('cache');if(sv&&sv.cache){for(const k in sv.cache)cache[k]=sv.cache[k];since=sv.since||0}const q=await idb.get('queue');if(Array.isArray(q))queue=q;const fl=await idb.get('queueFailed');if(Array.isArray(fl))failed=fl}catch(e){}
  try{await poll()}catch(e){if(!Object.keys(cache).length)throw e}
  window.addEventListener('online',()=>poll().catch(()=>{}));window.addEventListener('offline',()=>setNet(false));paintNet();
  if(!Object.keys(cache).length&&SEED.length){await api({a:'seed',docs:SEED});since=0;await poll()}
- setInterval(()=>poll().catch(()=>{}),4000);document.addEventListener('visibilitychange',()=>{if(!document.hidden)poll().catch(()=>{})})})())}
+ (function loop(){let d=document.hidden?30000:8000;poll().then(()=>{fails=0},()=>{fails=Math.min(fails+1,5)}).finally(()=>setTimeout(loop,Math.min(d*Math.pow(2,fails),120000)))})();document.addEventListener('visibilitychange',()=>{if(!document.hidden)poll().catch(()=>{})})})())}
 function names(){const m=(cache.config&&cache.config.accounts&&cache.config.accounts.map)||{};return m}
 const isOff=()=>{const d=cache.config&&cache.config.disabled;return !!(uid&&uid!==ADMIN&&d&&Array.isArray(d.ids)&&d.ids.includes(uid))};
 function blockScreen(){if(document.getElementById('ldBlock'))return;const o=document.createElement('div');o.id='ldBlock';o.style.cssText='position:fixed;inset:0;z-index:99999;background:#143a85;color:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;font-family:sans-serif;padding:24px;text-align:center';o.innerHTML='<div style="font-size:48px">🚫</div><h2 style="margin:0">គណនីនេះត្រូវបានបិទ</h2><div>សូមទាក់ទង Admin ដើម្បីបើកឡើងវិញ</div>';const b=document.createElement('button');b.textContent='ចាកចេញ';b.style.cssText='margin-top:10px;padding:12px 28px;font-size:16px;border:0;border-radius:12px';b.onclick=()=>{LS.removeItem('ld_uid');location.reload()};o.appendChild(b);document.body.appendChild(o)}
