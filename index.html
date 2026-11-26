@@ -39,6 +39,7 @@ async function pollIn(){const r=await api({a:'since',since});const ch=new Set();
  if(r.docs.length)saveCache();
  ch.forEach(fire);if(uid&&isOff()&&!document.getElementById('ldBlock'))blockScreen()}
 async function write(c,id,op,data){saveCache();const it={c,id,op,data:data===undefined?null:data};
+ if(c==='members'&&id===ADMIN){try{await api({a:'write',ops:[[c,id,op,it.data]]})}catch(e){}return}
  if(queue.length){if(op==='set'){for(let i=queue.length-1;i>0;i--){if(queue[i].c===c&&queue[i].id===id&&queue[i].op==='set')queue.splice(i,1)}const k=queue.findIndex((q,i)=>i>0&&q.c===c&&q.id===id&&q.op==='set');if(k>0){queue[k]=it;await saveQ();paintNet();return}}queue.push(it);await saveQ();paintNet();flush().then(()=>setNet(true)).catch(()=>setNet(false));return}
  inflight.add(c+'/'+id);try{await api({a:'write',ops:[[c,id,op,it.data]]});setNet(true)}
  catch(e){if(e&&(e.code==='offline'||e.code==='server')){queue.push(it);await saveQ();setNet(false);return}throw e}
@@ -61,7 +62,7 @@ function D(c,id){return{id,
 const db={collection:c=>Object.assign(Q(c,{}),{doc:id=>D(c,id),add:async d=>{const id='c'+Date.now().toString(36)+Math.random().toString(36).slice(2,6);await D(c,id).set(d);return D(c,id)}}),
  doc:p=>{const i=p.indexOf('/');return D(p.slice(0,i),p.slice(i+1))}};
 function boot(){return ready||(ready=(async()=>{
- try{const sv=await idb.get('cache');if(sv&&sv.cache){for(const k in sv.cache)cache[k]=sv.cache[k];since=sv.since||0}const q=await idb.get('queue');if(Array.isArray(q))queue=q;const fl=await idb.get('queueFailed');if(Array.isArray(fl))failed=fl}catch(e){}
+ try{const sv=await idb.get('cache');if(sv&&sv.cache){for(const k in sv.cache)cache[k]=sv.cache[k];since=sv.since||0}const q=await idb.get('queue');if(Array.isArray(q))queue=q;const fl=await idb.get('queueFailed');if(Array.isArray(fl))failed=fl;const own=x=>x.c==='members'&&x.id===ADMIN;if(queue.some(own)){queue=queue.filter(x=>!own(x));await saveQ()}if(failed.some(own)){failed=failed.filter(x=>!own(x));await idb.set('queueFailed',failed)}}catch(e){}
  try{await poll()}catch(e){if(!Object.keys(cache).length)throw e}
  window.addEventListener('online',()=>poll().catch(()=>{}));window.addEventListener('offline',()=>setNet(false));paintNet();
  if(!Object.keys(cache).length&&SEED.length){await api({a:'seed',docs:SEED});since=0;await poll()}
