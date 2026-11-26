@@ -16,23 +16,28 @@ const saveQ=()=>idb.set('queue',queue);
 const isPend=(c,id)=>inflight.has(c+'/'+id)||queue.some(q=>q.c===c&&q.id===id);
 function paintNet(){let b=document.getElementById('ldOff');const n=queue.length;if(online&&!n&&!failed.length){if(b)b.remove();return}if(!document.body)return;
  if(!b){b=document.createElement('div');b.id='ldOff';b.style.cssText='position:fixed;left:8px;right:8px;bottom:calc(8px + env(safe-area-inset-bottom,0px));z-index:99980;background:#B45309;color:#fff;font:600 13px sans-serif;padding:8px 12px;border-radius:12px;text-align:center;pointer-events:none;opacity:.95';document.body.append(b)}
- b.textContent=failed.length&&online?'⚠️ ផ្ញើមិនបាន '+failed.length+' ('+failed[0].c+'/'+failed[0].id+' '+failed[0].kb+'KB)'+(n?' · រង់ចាំ '+n:''):online?'🔄 កំពុងផ្ញើទិន្នន័យ '+n+' …':(navigator.onLine===false?'📴 គ្មានអ៊ីនធឺណិត · ទិន្នន័យរក្សាទុកក្នុងទូរសព្ទ':'⚠️ មានអ៊ីនធឺណិត ប៉ុន្តែភ្ជាប់ server មិនបាន · ទិន្នន័យរក្សាទុកក្នុងទូរសព្ទ · នឹងព្យាយាមម្តងទៀត')+(n?' ('+n+' រង់ចាំផ្ញើ)':'')}
+ b.textContent=failed.length&&online?'🔄 កំពុងព្យាយាមផ្ញើម្តងទៀត '+failed.length+(n?' · រង់ចាំ '+n:''):online?'🔄 កំពុងផ្ញើទិន្នន័យ '+n+' …':(navigator.onLine===false?'📴 គ្មានអ៊ីនធឺណិត · ទិន្នន័យរក្សាទុកក្នុងទូរសព្ទ':'⚠️ មានអ៊ីនធឺណិត ប៉ុន្តែភ្ជាប់ server មិនបាន · ទិន្នន័យរក្សាទុកក្នុងទូរសព្ទ · នឹងព្យាយាមម្តងទៀត')+(n?' ('+n+' រង់ចាំផ្ញើ)':'')}
 function setNet(v){if(online!==v){online=v}paintNet()}
-async function flush(){if(flushing||!queue.length)return;flushing=true;
- try{while(queue.length){const q=queue[0];try{await api({a:'write',ops:[[q.c,q.id,q.op,q.data===undefined?null:q.data]]})}
-  catch(e){if(e&&e.code!=='offline'&&e.code!=='server'){/* server refused this change: drop it so the queue does not get stuck */}
-   else{ /* a fetch error: is the whole server unreachable, or only THIS change? */
-    let reach=false;try{await api({a:'since',since});reach=true}catch(e2){}
-    if(!reach)throw e;
-    q.tries=(q.tries||0)+1;if(q.tries<3){await saveQ();throw e}
-    /* this one change keeps failing while the server answers: set it aside so the others can be sent */
-    failed.push({c:q.c,id:q.id,op:q.op,kb:Math.round(JSON.stringify(q.data||'').length/1024),data:q.data});await idb.set('queueFailed',failed)}}
-  queue.shift();await saveQ();paintNet()}}
+async function flush(){if(flushing||!queue.length)return;flushing=true;let single=false;
+ try{while(queue.length){const n=single?1:Math.min(queue.length,10),batch=queue.slice(0,n);
+  try{await api({a:'write',ops:batch.map(q=>[q.c,q.id,q.op,q.data===undefined?null:q.data])});queue.splice(0,n);await saveQ();paintNet();continue}
+  catch(e){const net=e&&(e.code==='offline'||e.code==='server');
+   if(n>1){single=true;continue}   /* a batch failed: send the changes one by one to find the culprit */
+   if(!net){queue.shift();await saveQ();paintNet();continue}   /* server refused this change: drop it so the queue does not get stuck */
+   let reach=false;try{await api({a:'since',since});reach=true}catch(e2){}
+   if(!reach)throw e;
+   const q=queue[0];q.tries=(q.tries||0)+1;if(q.tries<3){await saveQ();throw e}
+   /* this change keeps failing while the server answers: set it aside (retried again later) so the others can be sent */
+   failed.push({c:q.c,id:q.id,op:q.op,data:q.data,kb:Math.round(JSON.stringify(q.data||'').length/1024),total:(q.total||0)+q.tries});await idb.set('queueFailed',failed);
+   queue.shift();await saveQ();paintNet()}}}
  finally{flushing=false}}
+let lastRetry=0;
+async function retryFailed(){if(queue.length||!failed.length||Date.now()-lastRetry<60000)return;lastRetry=Date.now();
+ const f=failed.shift();if((f.total||0)<30){queue.push({c:f.c,id:f.id,op:f.op,data:f.data,total:f.total||0});await saveQ()}await idb.set('queueFailed',failed);paintNet()}
 const clone=o=>JSON.parse(JSON.stringify(o));
 async function api(b){let r;try{r=await fetch(U,{method:'POST',redirect:'follow',body:JSON.stringify(Object.assign({t:TOKEN},b))})}catch(e){throw{code:'offline',message:'offline'}}let j;try{j=await r.json()}catch(e){throw{code:'server',message:'bad reply'}}if(j.error)throw{code:'unavailable',message:j.error};return j}
 function fire(c){subs.forEach(s=>{if(s.c===c)s.fire()})}
-async function poll(){let fe;try{await flush()}catch(e){fe=e}try{await pollIn();setNet(true)}catch(e){if(e&&(e.code==='offline'||e.code==='server'))setNet(false);throw e}if(fe&&fe.code!=='offline'&&fe.code!=='server')throw fe}
+async function poll(){let fe;try{await flush();await retryFailed()}catch(e){fe=e}try{await pollIn();setNet(true)}catch(e){if(e&&(e.code==='offline'||e.code==='server'))setNet(false);throw e}if(fe&&fe.code!=='offline'&&fe.code!=='server')throw fe}
 async function pollIn(){const r=await api({a:'since',since});const ch=new Set();
  for(const [c,id,js,ts] of r.docs){if(ts>since)since=ts;if(isPend(c,id))continue;(cache[c]=cache[c]||{});if(js==null)delete cache[c][id];else cache[c][id]=JSON.parse(js);ch.add(c)}
 
