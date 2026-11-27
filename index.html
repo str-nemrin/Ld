@@ -34,8 +34,20 @@ async function flush(){if(flushing||!queue.length)return;flushing=true;let singl
 let lastRetry=0;
 async function retryFailed(){if(queue.length||!failed.length||Date.now()-lastRetry<60000)return;lastRetry=Date.now();
  const f=failed.shift();if((f.total||0)<30){queue.push({c:f.c,id:f.id,op:f.op,data:f.data,total:f.total||0});await saveQ()}await idb.set('queueFailed',failed);paintNet()}
+/* diagnostics: open  .../Ld/?diag=1  and send a screenshot of the box that appears */
+async function diag(){const box=document.createElement('pre');box.style.cssText='position:fixed;left:6px;right:6px;top:6px;z-index:100000;max-height:80vh;overflow:auto;background:#000;color:#0f0;font:12px/1.4 monospace;padding:10px;border-radius:10px;white-space:pre-wrap;word-break:break-all';document.body.append(box);
+ const out=t=>{box.textContent+=t+'\n'};const sz=o=>{try{return JSON.stringify(o===undefined?null:o).length}catch(e){return -1}};
+ out('DIAG v-batch-retry · onLine='+navigator.onLine+' · online='+online+' · queue='+queue.length+' · failed='+failed.length+' · since='+since);
+ const show=(l,a)=>{out(l+': '+(a?a.c+'/'+a.id+' op='+a.op+' bytes='+sz(a.data)+' tries='+(a.tries||0)+' total='+(a.total||0):'-'))};show('queue[0]',queue[0]);show('failed[0]',failed[0]);
+ const cnt={};queue.concat(failed).forEach(x=>{cnt[x.c]=(cnt[x.c]||0)+1});out('by collection: '+JSON.stringify(cnt));
+ const t=async(l,f)=>{try{const r=await f();out('OK  '+l+' '+(r&&r.docs?('docs='+r.docs.length):''))}catch(e){out('FAIL '+l+' -> '+(e&&e.code)+' · '+(e&&e.message));if(e&&e.code==='offline'){try{const r=await fetch(U,{method:'POST',mode:'no-cors',body:JSON.stringify({t:TOKEN,a:'since',since:Date.now()})});out('   no-cors probe: type='+r.type+' (opaque = server answered but without permission headers)')}catch(e2){out('   no-cors probe failed: '+e2)}}}};
+ await t('read (since)',()=>api({a:'since',since:Date.now()}));
+ await t('write diag/ping',()=>api({a:'write',ops:[['diag','ping','set',{t:Date.now()}]]}));
+ for(const a of [queue[0],failed[0]]){if(a)await t('replay '+a.c+'/'+a.id,()=>api({a:'write',ops:[[a.c,a.id,a.op,a.data===undefined?null:a.data]]}))}
+ out('--- end ---')}
+if(/[?&]diag/.test(location.search))setTimeout(()=>{ready&&ready.then?ready.then(diag,diag):diag()},2500);
 const clone=o=>JSON.parse(JSON.stringify(o));
-async function api(b){let r;try{r=await fetch(U,{method:'POST',redirect:'follow',body:JSON.stringify(Object.assign({t:TOKEN},b))})}catch(e){throw{code:'offline',message:'offline'}}let j;try{j=await r.json()}catch(e){throw{code:'server',message:'bad reply'}}if(j.error)throw{code:'unavailable',message:j.error};return j}
+async function api(b){const ac=typeof AbortController!=='undefined'?new AbortController():null,tm=setTimeout(()=>{try{ac&&ac.abort()}catch(e){}},25000);let r;try{r=await fetch(U,{method:'POST',redirect:'follow',signal:ac?ac.signal:undefined,body:JSON.stringify(Object.assign({t:TOKEN},b))})}catch(e){clearTimeout(tm);throw{code:'offline',message:'offline: '+String(e&&e.message||e)}}let j;try{j=await r.json()}catch(e){clearTimeout(tm);throw{code:'server',message:'bad reply (http '+r.status+')'}}clearTimeout(tm);if(j.error)throw{code:'unavailable',message:j.error};return j}
 function fire(c){subs.forEach(s=>{if(s.c===c)s.fire()})}
 async function poll(){let fe;try{await flush();await retryFailed()}catch(e){fe=e}try{await pollIn();setNet(true)}catch(e){if(e&&(e.code==='offline'||e.code==='server'))setNet(false);throw e}if(fe&&fe.code!=='offline'&&fe.code!=='server')throw fe}
 async function pollIn(){const r=await api({a:'since',since});const ch=new Set();
@@ -71,7 +83,7 @@ function boot(){return ready||(ready=(async()=>{
  try{await poll()}catch(e){if(!Object.keys(cache).length)throw e}
  window.addEventListener('online',()=>poll().catch(()=>{}));window.addEventListener('offline',()=>setNet(false));paintNet();
  if(!Object.keys(cache).length&&SEED.length){await api({a:'seed',docs:SEED});since=0;await poll()}
- (function loop(){let d=document.hidden?30000:8000;poll().then(()=>{fails=0},()=>{fails=Math.min(fails+1,5)}).finally(()=>setTimeout(loop,Math.min(d*Math.pow(2,fails),120000)))})();document.addEventListener('visibilitychange',()=>{if(!document.hidden)poll().catch(()=>{})})})())}
+ (function loop(){let d=document.hidden?60000:20000;poll().then(()=>{fails=0},()=>{fails=Math.min(fails+1,5)}).finally(()=>setTimeout(loop,Math.min(d*Math.pow(2,fails),120000)))})();document.addEventListener('visibilitychange',()=>{if(!document.hidden)poll().catch(()=>{})})})())}
 function names(){const m=(cache.config&&cache.config.accounts&&cache.config.accounts.map)||{};return m}
 const isOff=()=>{const d=cache.config&&cache.config.disabled;return !!(uid&&uid!==ADMIN&&d&&Array.isArray(d.ids)&&d.ids.includes(uid))};
 function blockScreen(){if(document.getElementById('ldBlock'))return;const o=document.createElement('div');o.id='ldBlock';o.style.cssText='position:fixed;inset:0;z-index:99999;background:#143a85;color:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;font-family:sans-serif;padding:24px;text-align:center';o.innerHTML='<div style="font-size:48px">🚫</div><h2 style="margin:0">គណនីនេះត្រូវបានបិទ</h2><div>សូមទាក់ទង Admin ដើម្បីបើកឡើងវិញ</div>';const b=document.createElement('button');b.textContent='ចាកចេញ';b.style.cssText='margin-top:10px;padding:12px 28px;font-size:16px;border:0;border-radius:12px';b.onclick=()=>{LS.removeItem('ld_uid');location.reload()};o.appendChild(b);document.body.appendChild(o)}
