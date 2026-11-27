@@ -3711,7 +3711,7 @@ body.home section[id^="v-"]{display:none!important}
   function renderSumLate(f, t){
     const list = Object.values(lates).filter(x => x.date >= f && x.date <= t && sInSel(x.co));
     const A = lateAgg(list);
-    $("slAmt").textContent = fmt(A.plan); $("slAcc").textContent = `${A.acc} Acc · យឺត ${fmt(A.amt)}`;
+    $("slAmt").textContent = fmt(A.plan); $("slAcc").textContent = `${A.planAcc} Acc · យឺតទាំងអស់ ${A.acc} Acc (${fmt(A.amt)})`;
     $("slCol").textContent = fmt(A.col); $("slColAcc").textContent = `${A.colAcc} Acc · ✓${A.full} ◐${A.part} ✕${A.none}`;
     const p = pct(A.col, A.plan); $("slPct").textContent = pctTxt(p);
     $("slPct").style.color = p == null ? "var(--muted)" : p >= 1 ? "var(--act)" : p >= .8 ? "var(--warn)" : "var(--bad)";
@@ -3734,26 +3734,26 @@ body.home section[id^="v-"]{display:none!important}
     { const td = (tr, main, sub, color) => { const c = document.createElement("td"); c.textContent = main; if (color) c.style.color = color;
         if (sub) { const sm = document.createElement("small"); sm.textContent = sub; sm.style.cssText = "display:block;font-size:.62rem;color:var(--muted);font-weight:400"; c.append(sm); } tr.append(c); };
       const pcol = q => q == null ? "var(--muted)" : q >= 1 ? "var(--act)" : q >= .8 ? "var(--warn)" : "var(--bad)";
-      const T2 = {plan:0, acc:0, col:0, colAcc:0, b:[0,1].map(() => ({amt:0, acc:0, col:0, colAcc:0, rem:0, remAcc:0}))};
+      const T2 = {plan:0, acc:0, openAcc:0, col:0, colAcc:0, b:[0,1].map(() => ({amt:0, acc:0, col:0, colAcc:0, rem:0, remAcc:0}))};
       const tabs = ["slCo","slCo1","slCo2"].map(id => { const t = $(id); t.querySelector("tbody").innerHTML = ""; t.querySelector("tfoot").innerHTML = ""; return t; });
       const name = (tr, n) => { const c = document.createElement("td"); c.textContent = n; tr.append(c); };
       const rowTot = (tr, X) => { td(tr, fmt(X.plan), X.acc + " Acc", "var(--mi)"); td(tr, fmt(X.col), X.colAcc + " Acc", "var(--act)");
-        const q = pct(X.col, X.plan); td(tr, pctTxt(q), "", pcol(q)); td(tr, fmt(Math.max(0, X.plan - X.col)), (X.b[0].remAcc + X.b[1].remAcc) + " Acc", "var(--bad)"); };
+        const q = pct(X.col, X.plan); td(tr, pctTxt(q), "", pcol(q)); td(tr, fmt(Math.max(0, X.plan - X.col)), X.openAcc + " Acc", "var(--bad)"); };
       const rowB = (tr, B) => { td(tr, fmt(B.amt), B.acc + " Acc"); td(tr, fmt(B.col), B.colAcc + " Acc", "var(--act)"); td(tr, fmt(B.rem), B.remAcc + " Acc", "var(--bad)"); };
       for (const [co, r] of lrows){
         const Ao = lateAgg(list.filter(x => x.co === co));
-        const X = {plan:r.plan, acc:Ao.acc, col:r.col, colAcc:Ao.colAcc,
+        const X = {plan:r.plan, acc:Ao.planAcc, openAcc:Ao.openAcc, col:r.col, colAcc:Ao.colAcc,
           b: Ao.bk.map(k => ({amt:k.amt, acc:k.acc, col:k.col, colAcc:k.colAcc, rem:Math.max(0, k.amt - k.col), remAcc:Math.max(0, k.acc - k.fullAcc)}))};
         if (!isLeaderName(co)) [0,1,2].forEach(i => { const tr = document.createElement("tr"); tr.style.setProperty("--oc", coColor(co)); name(tr, co);
           if (i === 0) rowTot(tr, X); else rowB(tr, X.b[i-1]); tabs[i].querySelector("tbody").append(tr); });   // team leader is counted in សរុប but not listed as an officer
-        T2.plan += X.plan; T2.acc += X.acc; T2.col += X.col; T2.colAcc += X.colAcc;
+        T2.plan += X.plan; T2.acc += X.acc; T2.openAcc += X.openAcc; T2.col += X.col; T2.colAcc += X.colAcc;
         X.b.forEach((B, i) => { for (const q in B) T2.b[i][q] += B[q]; });
       }
       [0,1,2].forEach(i => { const tr = document.createElement("tr"); name(tr, "សរុប"); if (i === 0) rowTot(tr, T2); else rowB(tr, T2.b[i-1]); tabs[i].querySelector("tfoot").append(tr); }); }
-    groupedBars($("chSLCo"), [...lrows.filter(([co]) => !isLeaderName(co)).map(([co,r]) => { const Ao = lateAgg(list.filter(x => x.co === co)); return {label: co, vals: [r.plan, r.col], accs: [Ao.acc, Ao.colAcc], sub: pctTxt(pct(r.col, r.plan))}; }),
-      (() => { const P = lrows.reduce((a, [, r]) => a + r.plan, 0), C = lrows.reduce((a, [, r]) => a + r.col, 0), At = lateAgg(list); return {label: "Total", vals: [P, C], accs: [At.acc, At.colAcc], sub: pctTxt(pct(C, P))}; })()],
+    groupedBars($("chSLCo"), [...lrows.filter(([co]) => !isLeaderName(co)).map(([co,r]) => { const Ao = lateAgg(list.filter(x => x.co === co)); return {label: co, vals: [r.plan, r.col], accs: [Ao.planAcc, Ao.colAcc], sub: pctTxt(pct(r.col, r.plan))}; }),
+      (() => { const P = lrows.reduce((a, [, r]) => a + r.plan, 0), C = lrows.reduce((a, [, r]) => a + r.col, 0), At = lateAgg(list); return {label: "Total", vals: [P, C], accs: [At.planAcc, At.colAcc], sub: pctTxt(pct(C, P))}; })()],
       [{color:"var(--bad)"},{color:"var(--act)"}], {aria:"កម្ចីយឺតតាមមន្ត្រី", forceLabels: true, headroom: 2.3, slant: true});
-    groupedBars($("chSLBk"), BUCKETS.map((b,i) => ({label: i ? "ផ្នែក ២ (31+)" : "ផ្នែក ១ (1-30)", vals: [A.bk[i].plan, partCol[i ? "2" : "1"] || 0], accs: [A.bk[i].acc, A.bk[i].colAcc]})),
+    groupedBars($("chSLBk"), BUCKETS.map((b,i) => ({label: i ? "ផ្នែក ២ (31+)" : "ផ្នែក ១ (1-30)", vals: [A.bk[i].plan, partCol[i ? "2" : "1"] || 0], accs: [A.bk[i].planAcc, A.bk[i].colAcc]})),
       [{color:"var(--bad)"},{color:"var(--act)"}], {aria:"ផ្នែកថ្ងៃយឺត", forceLabels: true, headroom: 2.3, fullLabels: true, labelColor: l => l.includes("31") ? BUCKETS[1][3] : BUCKETS[0][3]});
   }
   function lateRows(){
@@ -5770,7 +5770,7 @@ table.ptbl tfoot td{font-size:11px!important;padding:4px 2px!important}
         for (const q in TT) TT[q] += P[q]; PP[k] = P; partCol[k] = P.col; }
       const lp = pct(TT.col, A.plan), lrem = Math.max(0, A.plan - TT.col);
       S.push({t: "⚠️ កម្ចីយឺត · សង្ខេបរួម", s: "ផែនការប្រមូល ធៀប ប្រមូលបាន · " + esc(rangeTxt()),
-        b: A.acc ? `<div class="sx-hero">${ring(lp, null, "ប្រមូលបាន")}<div class="sx-cds">${cd("ផែនការប្រមូល", fmt(A.plan), A.acc + " Acc · យឺត " + fmt(A.amt), "a")}${cd("ប្រមូលបាន", fmt(TT.col), TT.cAcc + " Acc · ✓" + TT.full + " ◐" + TT.part, "g")}${cd("% ប្រមូល", pctTxt(lp), "នៅខ្វះ " + fmt(lrem), tone(lp))}${cd("សន្យាហួសកំណត់", String(A.proOver), "Acc")}</div></div><div class="sx-cds">${BUCKETS.map((b, i) => cd(b[0], fmt(A.bk[i].amt), `យឺត ${A.bk[i].acc} Acc · ប្រមូលបាន ${fmt(A.bk[i].col)} · នៅសល់ ${fmt(Math.max(0, A.bk[i].amt - A.bk[i].col))}`, i ? "r" : "a")).join("")}</div>` : EM});
+        b: A.acc ? `<div class="sx-hero">${ring(lp, null, "ប្រមូលបាន")}<div class="sx-cds">${cd("ផែនការប្រមូល", fmt(A.plan), A.planAcc + " Acc · យឺតទាំងអស់ " + A.acc + " Acc (" + fmt(A.amt) + ")", "a")}${cd("ប្រមូលបាន", fmt(TT.col), TT.cAcc + " Acc · ✓" + TT.full + " ◐" + TT.part, "g")}${cd("% ប្រមូល", pctTxt(lp), "នៅខ្វះ " + fmt(lrem), tone(lp))}${cd("សន្យាហួសកំណត់", String(A.proOver), "Acc")}</div></div><div class="sx-cds">${BUCKETS.map((b, i) => cd(b[0], fmt(A.bk[i].amt), `យឺត ${A.bk[i].acc} Acc · ប្រមូលបាន ${fmt(A.bk[i].col)} · នៅសល់ ${fmt(Math.max(0, A.bk[i].amt - A.bk[i].col))}`, i ? "r" : "a")).join("")}</div>` : EM});
 
       // late: daily collection
       { const days = []; let n = 0;
